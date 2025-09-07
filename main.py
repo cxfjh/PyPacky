@@ -2,9 +2,9 @@ import os
 import subprocess
 import sys
 import time
-from PySide6.QtCore import Signal, QThread
+from PySide6.QtCore import Signal, QThread, Qt
 from PySide6.QtGui import QFont, QIcon
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QLineEdit, QFileDialog, QTextEdit, QGroupBox, QFormLayout, QSpinBox, QScrollArea, QListWidget, QMessageBox
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QLineEdit, QFileDialog, QTextEdit, QGroupBox, QFormLayout, QSpinBox, QScrollArea, QListWidget, QMessageBox, QLabel
 
 
 # 获取资源文件路径
@@ -56,7 +56,7 @@ class NuitkaPackager(QMainWindow):
         super().__init__()
         self.python_env_path = "python -m"
         self.packager_thread = None  # 打包线程实例
-        self.setWindowTitle("✨ PyPacky 打包工具")  # 窗口标题
+        self.setWindowTitle("✨ PyPacky")  # 窗口标题
         self.setGeometry(100, 100, 750, 800)  # 窗口位置和大小（增加高度以容纳新功能）
         self.setWindowIcon(QIcon(str(get_path("./src/static/logo.ico"))))
 
@@ -265,6 +265,24 @@ class NuitkaPackager(QMainWindow):
         log_group.setLayout(log_layout)
         log_group.setMinimumHeight(220)  # 最小高度
         main_layout.addWidget(log_group)
+
+        # 开源地址标签
+        self.open_source_label = QLabel()
+        open_source_url = "https://github.com/cxfjh/PyPacky"
+        self.open_source_label.setText(
+            f'<span style="font-size: 9pt;">🔖︎ 当前版本: v0.1.0</span>'
+            f'<br><span style="font-size: 9pt;">✉️ 联系作者: 2449579731@qq.com</span><br>'
+            f'<span style="font-size: 9pt;">📚 开源仓库: </span>'
+            f'<a href="{open_source_url}" style="font-size: 9pt; color: #1a73e8; text-decoration: underline;">'
+            f'{open_source_url}</a>'
+        )
+
+        # 配置标签行为：点击链接自动打开浏览器
+        self.open_source_label.setOpenExternalLinks(True)  # 允许打开外部链接
+        self.open_source_label.setStyleSheet("margin: 8px 12px 8px 0;")  # 设置边距（上右下左）
+
+        # 将标签添加到主布局
+        main_layout.addWidget(self.open_source_label)
 
 
     @staticmethod
@@ -540,8 +558,7 @@ class NuitkaPackager(QMainWindow):
 
 # 程序入口
 if __name__ == "__main__":
-    app = QApplication(sys.argv) 
-    window = NuitkaPackager() 
-    window.show() 
+    app = QApplication(sys.argv)
+    window = NuitkaPackager()
+    window.show()
     sys.exit(app.exec())
-    
