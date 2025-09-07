@@ -71,7 +71,6 @@ class NuitkaPackager(QMainWindow):
 
         # 插件映射表（中文名称 -> 参数和提示信息）
         self.plugin_map = {
-            "减少体积": {"param": "anti-bloat", "tip": "移除不必要的标准库和依赖，减少可执行文件体积"},
             "Tkinter 支持": {"param": "tk-inter", "tip": "启用 Tkinter 插件支持"},
             "PySide6 支持": {"param": "pyside6", "tip": "启用 PySide6 插件支持"},
             "PyQt6 支持": {"param": "pyqt6", "tip": "启用 PyQt6 插件支持"},
@@ -86,8 +85,11 @@ class NuitkaPackager(QMainWindow):
         self.mode_map = {
             "独立运行": {"param": "--standalone", "tip": "独立运行模式，打包所有依赖到输出目录"},
             "exe文件": {"param": "--onefile", "tip": "生成单文件 exe，启动时会自动解压"},
+            "减少体积": {"param": "--enable-plugin=anti-bloat", "tip": "移除不必要的标准库和依赖，减少可执行文件体积"},
             "移除临时文件": {"param": "--remove-output", "tip": "打包完成后自动清理中间生成目录"},
             "禁用控制台": {"param": "--windows-disable-console", "tip": "禁用控制台窗口（GUI 程序推荐开启）"},
+            "软件管理员权限": {"param": "--windows-uac-admin", "tip": "在执行时授予管理权限"},
+            "远程桌面权限":{"param": "--windows-uac-uiaccess", "tip": "强制仅从少数文件夹运行，远程桌面访问"},
         }
 
         # Python 标志映射表
@@ -152,7 +154,6 @@ class NuitkaPackager(QMainWindow):
 
         # 插件设置区域
         self.plugin_checks = self.create_check_group("🔌 启用插件", [
-            ("减少体积", True),
             ("Tkinter 支持", False),
             ("PySide6 支持", False),
             ("PyQt6 支持", False),
@@ -168,8 +169,11 @@ class NuitkaPackager(QMainWindow):
         self.mode_checks = self.create_check_group("📦 打包模式", [
             ("独立运行", True),
             ("exe文件", True),
+            ("减少体积", True),
             ("移除临时文件", True),
             ("禁用控制台", False),
+            ("软件管理员权限", False),
+            ("远程桌面权限", False),
         ], self.mode_map)
         scroll_layout.addWidget(self.mode_checks)
 
@@ -251,6 +255,33 @@ class NuitkaPackager(QMainWindow):
         # 绑定按钮事件
         self.generate_btn.clicked.connect(self.generate_command)
         self.run_btn.clicked.connect(self.run_packaging)
+
+        # 版本信息区域
+        version_group = self.create_group("📌 版本信息")
+        version_layout = QFormLayout()
+
+        self.product_name_edit = QLineEdit()
+        self.product_name_edit.setPlaceholderText("PyPacky")
+        self.file_version_edit = QLineEdit()
+        self.file_version_edit.setPlaceholderText("0.1.0")
+        self.product_version_edit = QLineEdit()
+        self.product_version_edit.setPlaceholderText("0.1.0")
+        self.file_description_edit = QLineEdit()
+        self.file_description_edit.setPlaceholderText("Python 打包工具")
+        self.copyright_edit = QLineEdit()
+        self.copyright_edit.setPlaceholderText("© 2025 PyPacky. All rights reserved.")
+        self.trademarks_edit = QLineEdit()
+        self.trademarks_edit.setPlaceholderText("PyPacky is a trademark of cxfjh.")
+
+        version_layout.addRow("产品名称:", self.product_name_edit)
+        version_layout.addRow("文件版本:", self.file_version_edit)
+        version_layout.addRow("产品版本:", self.product_version_edit)
+        version_layout.addRow("文件描述:", self.file_description_edit)
+        version_layout.addRow("版权信息:", self.copyright_edit)
+        version_layout.addRow("商标信息:", self.trademarks_edit)
+
+        version_group.setLayout(version_layout)
+        scroll_layout.addWidget(version_group)
 
         # 日志显示区域
         log_group = self.create_group("📝 打包日志")
@@ -500,6 +531,14 @@ class NuitkaPackager(QMainWindow):
         for cb in self.exclude_checks.findChildren(QCheckBox):
             if cb.isChecked() and cb.text() in self.exclude_map:
                 command.append(self.exclude_map[cb.text()]["param"])
+
+        # 版本信息参数
+        if self.product_name_edit.text().strip(): command.append(f'--product-name="{self.product_name_edit.text().strip()}"')
+        if self.file_version_edit.text().strip(): command.append(f'--file-version="{self.file_version_edit.text().strip()}"')
+        if self.product_version_edit.text().strip(): command.append(f'--product-version="{self.product_version_edit.text().strip()}"')
+        if self.file_description_edit.text().strip(): command.append(f'--file-description="{self.file_description_edit.text().strip()}"')
+        if self.copyright_edit.text().strip(): command.append(f'--copyright="{self.copyright_edit.text().strip()}"')
+        if self.trademarks_edit.text().strip(): command.append(f'--trademarks="{self.trademarks_edit.text().strip()}"')
 
         # 添加输出目录参数
         temp_dir = self.temp_dir_edit.text().strip()
