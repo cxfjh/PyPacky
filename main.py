@@ -9,8 +9,8 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, Q
 
 # 获取资源文件路径
 def get_path(relative_path):
-    if getattr(sys, 'frozen', False): base_path = sys._MEIPASS # 打包后的环境：Nuitka 会将资源解压到临时目录 sys._MEIPASS
-    else: base_path = os.path.dirname(os.path.abspath(__file__))  # 开发环境：使用当前文件的相对路径
+    if getattr(sys, 'frozen', False): base_path = sys._MEIPASS
+    else: base_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(base_path, relative_path)
 
 
@@ -19,6 +19,7 @@ class PackagerThread(QThread):
     # 定义信号，用于向主线程发送输出信息
     output_signal = Signal(str)
 
+    # 构造函数，接收打包命令作为参数
     def __init__(self, command):
         super().__init__()
         self.command = command  # 要执行的打包命令
@@ -34,7 +35,7 @@ class PackagerThread(QThread):
                 shell=True  # 使用shell执行命令
             )
 
-            # 实时读取子进程输出并发送信号
+            # 实时读取子进程出并发送信号
             while process.poll() is None:  # 进程未结束时
                 output = process.stdout.readline()  # 读取一行输出
                 if output: self.output_signal.emit(output)  # 发送输出信息
@@ -45,17 +46,19 @@ class PackagerThread(QThread):
 
             # 发送打包完成信息
             self.output_signal.emit(f"\n✅ 打包完成，返回代码: {process.returncode}")
-        except Exception as e: self.output_signal.emit(f"❌ 错误: {str(e)}")
+        except Exception as e:
+            self.output_signal.emit(f"❌ 错误: {str(e)}")
 
 
 # Nuitka打包工具主窗口类
 class NuitkaPackager(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.python_env_path = "python -m"
         self.packager_thread = None  # 打包线程实例
         self.setWindowTitle("✨ PyPacky 打包工具")  # 窗口标题
-        self.setGeometry(100, 100, 950, 750)  # 窗口位置和大小
-        self.setWindowIcon(QIcon(get_path("./src/static/logo.ico")))
+        self.setGeometry(100, 100, 750, 800)  # 窗口位置和大小（增加高度以容纳新功能）
+        self.setWindowIcon(QIcon(str(get_path("./src/static/logo.ico"))))
 
         # 启用拖拽功能
         self.setAcceptDrops(True)
@@ -64,6 +67,7 @@ class NuitkaPackager(QMainWindow):
         self.main_file_path = ""  # 主Python文件路径
         self.icon_file_path = ""  # 图标文件路径
         self.folder_paths = []  # 需要打包的文件夹列表
+        self.file_paths = []    # 需要打包的文件列表
 
         # 插件映射表（中文名称 -> 参数和提示信息）
         self.plugin_map = {
@@ -82,7 +86,7 @@ class NuitkaPackager(QMainWindow):
         self.mode_map = {
             "独立运行": {"param": "--standalone", "tip": "独立运行模式，打包所有依赖到输出目录"},
             "exe文件": {"param": "--onefile", "tip": "生成单文件 exe，启动时会自动解压"},
-            "移除中间文件": {"param": "--remove-output", "tip": "打包完成后自动清理中间生成目录"},
+            "移除临时文件": {"param": "--remove-output", "tip": "打包完成后自动清理中间生成目录"},
             "禁用控制台": {"param": "--windows-disable-console", "tip": "禁用控制台窗口（GUI 程序推荐开启）"},
         }
 
@@ -99,7 +103,7 @@ class NuitkaPackager(QMainWindow):
             "排除 IPython": {"param": "--noinclude-IPython-mode=error", "tip": "排除 IPython，避免额外依赖"},
         }
 
-        # 设置全局字体（支持中文显示）
+        # 设置全局字体
         app_font = QFont("Microsoft YaHei", 10)
         self.setFont(app_font)
 
@@ -109,7 +113,7 @@ class NuitkaPackager(QMainWindow):
         main_layout = QVBoxLayout(central_widget)  # 主布局
         main_layout.setContentsMargins(12, 12, 12, 12)  # 边距设置
 
-        # 创建滚动区域（用于容纳较多设置项）
+        # 创建滚动区域
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)  # 滚动区域大小自适应
         scroll_content = QWidget()  # 滚动区域内容部件
@@ -118,8 +122,8 @@ class NuitkaPackager(QMainWindow):
         scroll_area.setWidget(scroll_content)
         main_layout.addWidget(scroll_area)
 
-        # 1. 基本设置区域
-        input_group = self.create_group("⚙️ 基本设置")  # 创建分组框
+        # 基本设置区域
+        input_group = self.create_group("⚙️ 基本设置") # 创建分组框
         input_layout = QFormLayout()  # 表单布局
 
         # 添加文件输入框和浏览按钮
@@ -128,20 +132,25 @@ class NuitkaPackager(QMainWindow):
         self.output_name_edit = QLineEdit("app.exe")  # 输出文件名输入框
         self.temp_dir_edit = QLineEdit()  # 临时目录输入框
 
+        # 添加python环境输入框和按钮
+        self.python_env_edit, python_env_btn = self.add_file_input("默认系统Python环境，可选择虚拟环境", self.select_python_env)
+
         # 自动生成临时目录按钮
         gen_temp_btn = QPushButton("自动生成")
         gen_temp_btn.clicked.connect(self.generate_temp_dir)
 
         # 添加到表单布局
         input_layout.addRow("主文件:", self.wrap_hbox([self.main_file_edit, main_btn]))
-        input_layout.addRow("图标:", self.wrap_hbox([self.icon_file_edit, icon_btn]))
+        input_layout.addRow("ICO图标:", self.wrap_hbox([self.icon_file_edit, icon_btn]))
         input_layout.addRow("输出文件名:", self.output_name_edit)
         input_layout.addRow("临时目录:", self.wrap_hbox([self.temp_dir_edit, gen_temp_btn]))
+        input_layout.addRow("Python环境:", self.wrap_hbox([self.python_env_edit, python_env_btn]))
 
+        # 设置表单布局
         input_group.setLayout(input_layout)
         scroll_layout.addWidget(input_group)
 
-        # 2. 插件设置区域
+        # 插件设置区域
         self.plugin_checks = self.create_check_group("🔌 启用插件", [
             ("减少体积", True),
             ("Tkinter 支持", False),
@@ -155,16 +164,16 @@ class NuitkaPackager(QMainWindow):
         ], self.plugin_map)
         scroll_layout.addWidget(self.plugin_checks)
 
-        # 3. 打包模式设置区域
+        # 打包模式设置区域
         self.mode_checks = self.create_check_group("📦 打包模式", [
             ("独立运行", True),
             ("exe文件", True),
-            ("移除中间文件", False),
+            ("移除临时文件", True),
             ("禁用控制台", False),
         ], self.mode_map)
         scroll_layout.addWidget(self.mode_checks)
 
-        # 4. 文件夹打包设置区域
+        # 文件夹打包设置区域
         folder_group = self.create_group("📂 打包文件夹")
         folder_layout = QVBoxLayout()
         self.folder_list = QListWidget()  # 文件夹列表显示
@@ -179,7 +188,22 @@ class NuitkaPackager(QMainWindow):
         folder_group.setLayout(folder_layout)
         scroll_layout.addWidget(folder_group)
 
-        # 5. 编译选项设置区域
+        # 文件打包设置区域
+        file_group = self.create_group("📄 打包文件")
+        file_layout = QVBoxLayout()
+        self.file_list = QListWidget()  # 文件列表显示
+        add_file_btn = QPushButton("➕ 添加文件")
+        remove_file_btn = QPushButton("🗑️ 移除选中")
+        add_file_btn.clicked.connect(self.add_file)  # 绑定添加文件事件
+        remove_file_btn.clicked.connect(self.remove_file)  # 绑定移除文件事件
+
+        file_layout.addWidget(self.file_list)
+        file_layout.addWidget(add_file_btn)
+        file_layout.addWidget(remove_file_btn)
+        file_group.setLayout(file_layout)
+        scroll_layout.addWidget(file_group)
+
+        # 编译选项设置区域
         compile_group = self.create_group("🛠️ 编译选项")
         compile_layout = QFormLayout()
         self.use_mingw = QCheckBox("使用Mingw编译器")  # Mingw编译器选项
@@ -196,14 +220,14 @@ class NuitkaPackager(QMainWindow):
         compile_group.setLayout(compile_layout)
         scroll_layout.addWidget(compile_group)
 
-        # 6. Python 标志设置区域
+        # Python 标志设置区域
         self.python_checks = self.create_check_group("🐍 Python 标志", [
             ("禁用断言", False),
             ("静态哈希", False),
         ], self.python_flag_map)
         scroll_layout.addWidget(self.python_checks)
 
-        # 7. 排除设置区域
+        # 排除设置区域
         self.exclude_checks = self.create_check_group("🚫 排除设置", [
             ("排除 setuptools", False),
             ("排除 pydoc", False),
@@ -235,18 +259,21 @@ class NuitkaPackager(QMainWindow):
         self.log_edit.setReadOnly(True)  # 只读
         self.log_edit.setFont(QFont("Consolas", 10))  # 使用等宽字体
         self.log_edit.setStyleSheet("background-color: #1e1e1e; color: #dcdcdc; padding: 6px;")  # 深色主题
+        self.log_edit.append("💡 提示：可以将 .py 文件或 .ico 文件直接拖拽到窗口中")
+        self.log_edit.append("💡 提示：也可以拖拽其他文件到窗口中，它们会被添加到打包列表")
         log_layout.addWidget(self.log_edit)
         log_group.setLayout(log_layout)
         log_group.setMinimumHeight(220)  # 最小高度
         main_layout.addWidget(log_group)
 
-    # ---------------- 工具函数 ---------------- #
+
     @staticmethod
     def create_group(title):
         """创建带标题的分组框"""
         group = QGroupBox(title)
         group.setStyleSheet("QGroupBox { font-weight: bold; }")  # 加粗标题
         return group
+
 
     @staticmethod
     def wrap_hbox(widgets):
@@ -258,6 +285,7 @@ class NuitkaPackager(QMainWindow):
         container.setLayout(box)
         return container
 
+
     @staticmethod
     def add_file_input(label, callback):
         """创建文件输入框和浏览按钮组合"""
@@ -266,6 +294,7 @@ class NuitkaPackager(QMainWindow):
         btn = QPushButton("浏览...")
         btn.clicked.connect(callback)  # 绑定浏览事件
         return line_edit, btn
+
 
     def create_check_group(self, title, items, mapping):
         """创建带复选框的分组框"""
@@ -281,7 +310,7 @@ class NuitkaPackager(QMainWindow):
         group.setLayout(layout)
         return group
 
-    # ---------------- 文件夹打包相关方法 ---------------- #
+
     def add_folder(self):
         """添加文件夹到打包列表"""
         path = QFileDialog.getExistingDirectory(self, "选择要打包的文件夹")
@@ -291,6 +320,7 @@ class NuitkaPackager(QMainWindow):
                 self.folder_list.addItem(path)
             else: QMessageBox.information(self, "提示", "该文件夹已添加")
 
+
     def remove_folder(self):
         """从打包列表移除选中的文件夹"""
         selected = self.folder_list.currentRow()  # 获取选中行索引
@@ -298,7 +328,25 @@ class NuitkaPackager(QMainWindow):
             item = self.folder_list.takeItem(selected)  # 移除列表项
             self.folder_paths.remove(item.text())  # 从路径列表移除
 
-    # ---------------- 临时目录自动生成 ---------------- #
+
+    def add_file(self):
+        """添加文件到打包列表"""
+        path, _ = QFileDialog.getOpenFileName(self, "选择要打包的文件")
+        if path:
+            if path not in self.file_paths:  # 避免重复添加
+                self.file_paths.append(path)
+                self.file_list.addItem(os.path.basename(path))
+            else: QMessageBox.information(self, "提示", "该文件已添加")
+
+
+    def remove_file(self):
+        """从打包列表移除选中的文件"""
+        selected = self.file_list.currentRow()  # 获取选中行索引
+        if selected >= 0:
+            self.file_list.takeItem(selected)  # 移除列表项
+            self.file_paths.pop(selected)  # 从路径列表移除
+
+
     def generate_temp_dir(self):
         """自动生成临时目录路径"""
         if not self.main_file_edit.text().strip():
@@ -311,11 +359,12 @@ class NuitkaPackager(QMainWindow):
         new_dir = f"{{TEMP}}/{timestamp}_{base_name}"  # 组合路径
         self.temp_dir_edit.setText(new_dir)
 
-    # ---------------- 拖拽支持相关方法 ---------------- #
+
     def dragEnterEvent(self, event):
         """拖拽进入事件处理"""
         if event.mimeData().hasUrls():  # 有URL（文件路径）时接受拖拽
             event.acceptProposedAction()
+
 
     def dropEvent(self, event):
         """拖拽释放事件处理"""
@@ -330,26 +379,37 @@ class NuitkaPackager(QMainWindow):
                 self.icon_file_path = file_path
                 self.icon_file_edit.setText(file_path)
                 self.log_edit.append(f"🎨 已拖入图标文件: {file_path}")
+            else:  # 其他文件（添加到文件打包列表）
+                if file_path not in self.file_paths:
+                    self.file_paths.append(file_path)
+                    self.file_list.addItem(os.path.basename(file_path))
+                    self.log_edit.append(f"📄 已添加打包文件: {os.path.basename(file_path)}")
+                else:
+                    self.log_edit.append(f"⚠️ 文件已存在: {os.path.basename(file_path)}")
 
-    # ---------------- Nuitka 检查与安装 ---------------- #
+
     def check_and_install_nuitka(self):
         """检查Nuitka是否安装，未安装则自动安装"""
+        if self.python_env_edit.text().strip() == "": self.python_env_path = "python"
         try:
             # 检查是否已安装Nuitka
-            subprocess.check_output("nuitka --version", shell=True)
+            command = f'"{self.python_env_path}" -m nuitka --version'
+            subprocess.check_output(command, shell=True, text=True, stderr=subprocess.STDOUT)
             return True
         except Exception as e:
             self.log_edit.append("⚠️ 未检测到 Nuitka，正在自动安装...")
+            self.log_edit.append(str(e))
             try:
                 # 安装Nuitka及其依赖
-                subprocess.check_call(["python", "-m", "pip", "install", "nuitka", "-i", "https://pypi.tuna.tsinghua.edu.cn/simple"], shell=False)
+                command = f'"{self.python_env_path}" -m pip install nuitka -i https://pypi.tuna.tsinghua.edu.cn/simple'
+                subprocess.check_call(command, shell=False)
                 self.log_edit.append("✅ Nuitka 安装完成")
                 return True
             except Exception as e:
                 self.log_edit.append(f"❌ 安装 Nuitka 失败: {e}")
                 return False
 
-    # ---------------- 事件处理方法 ---------------- #
+
     def select_main_file(self):
         """选择主Python文件"""
         path, _ = QFileDialog.getOpenFileName(self, "选择主Python文件", "", "Python Files (*.py)")
@@ -357,12 +417,22 @@ class NuitkaPackager(QMainWindow):
             self.main_file_path = path
             self.main_file_edit.setText(path)
 
+
     def select_icon_file(self):
         """选择图标文件"""
         path, _ = QFileDialog.getOpenFileName(self, "选择图标文件", "", "Icon Files (*.ico)")
         if path:
             self.icon_file_path = path
             self.icon_file_edit.setText(path)
+            
+            
+    def select_python_env(self):
+        """选择Python环境"""
+        path, _ = QFileDialog.getOpenFileName(self, "选择Python环境", "", "Python Environments (*.exe)")
+        if path:
+            self.python_env_path = path
+            self.python_env_edit.setText(path)
+
 
     def generate_command(self):
         """生成Nuitka打包命令"""
@@ -370,7 +440,12 @@ class NuitkaPackager(QMainWindow):
             self.log_edit.append("⚠️ 请先选择主Python文件")
             return None
 
-        command = ["nuitka"]  # 命令起始部分
+        # 判断是否选择了环境
+        if self.python_env_edit.text().strip() == "": command = ["echo yes | nuitka"]
+        else: command = [f'echo yes | "{self.python_env_edit.text().strip()}" -m nuitka']
+
+        # 输出路径
+        command.append(f'--output-dir="{os.path.dirname(self.main_file_edit.text().strip())}"')
 
         # 添加插件参数
         for cb in self.plugin_checks.findChildren(QCheckBox):
@@ -383,10 +458,15 @@ class NuitkaPackager(QMainWindow):
                 command.append(self.mode_map[cb.text()]["param"])
 
         # 添加图标参数
-        if self.icon_file_path: command.append(f"--windows-icon-from-ico={self.icon_file_path}")
+        if self.icon_file_edit.text().strip(): command.append(f"--windows-icon-from-ico={self.icon_file_edit.text().strip()}")
 
         # 添加文件夹打包参数
         for folder in self.folder_paths: command.append(f'--include-data-dir="{folder}={os.path.basename(folder)}"')
+
+        # 添加文件打包参数（新增）
+        for file_path in self.file_paths:
+            file_name = os.path.basename(file_path)
+            command.append(f'--include-data-files="{file_path}={file_name}"')
 
         # 添加编译选项参数
         if self.use_mingw.isChecked(): command.append("--mingw64")  # 使用Mingw编译器
@@ -421,8 +501,9 @@ class NuitkaPackager(QMainWindow):
         self.log_edit.append(command_str)
         return command_str
 
+
     def run_packaging(self):
-        """执行打包操作"""
+        """检查并安装Nuitka"""
         # 检查并安装Nuitka
         if not self.check_and_install_nuitka():
             QMessageBox.critical(self, "错误", "Nuitka 未安装且安装失败")
@@ -444,10 +525,11 @@ class NuitkaPackager(QMainWindow):
         self.packager_thread.finished.connect(self.packaging_finished)  # 绑定完成信号
         self.packager_thread.start()
 
+
     def update_log(self, text):
         """更新日志显示"""
         self.log_edit.append(text.strip())
-        self.log_edit.moveCursor(self.log_edit.textCursor().End)  # 滚动到末尾
+
 
     def packaging_finished(self):
         """打包完成后的处理"""
@@ -458,7 +540,8 @@ class NuitkaPackager(QMainWindow):
 
 # 程序入口
 if __name__ == "__main__":
-    app = QApplication(sys.argv)  # 创建应用实例
-    window = NuitkaPackager()  # 创建主窗口
-    window.show()  # 显示窗口
-    sys.exit(app.exec())  # 进入事件循环
+    app = QApplication(sys.argv) 
+    window = NuitkaPackager() 
+    window.show() 
+    sys.exit(app.exec())
+    
