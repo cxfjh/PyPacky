@@ -2,7 +2,7 @@ import os
 import subprocess
 import sys
 import time
-from PySide6.QtCore import Signal, QThread, Qt
+from PySide6.QtCore import Signal, QThread
 from PySide6.QtGui import QFont, QIcon
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QCheckBox, QLineEdit, QFileDialog, QTextEdit, QGroupBox, QFormLayout, QSpinBox, QScrollArea, QListWidget, QMessageBox, QLabel
 
